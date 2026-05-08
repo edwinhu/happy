@@ -559,7 +559,7 @@ class Sync {
             }
         }
 
-        const { permissionMode, model, effort } = resolveMessageModeMeta(session);
+        const { permissionMode, permissionModeExplicit, model, effort } = resolveMessageModeMeta(session);
         const { displayText, source = 'chat', attachments } = options ?? {};
 
         // Image attachments are wired into the Claude pipeline only; Codex /
@@ -673,6 +673,7 @@ class Sync {
             meta: {
                 sentFrom,
                 permissionMode,
+                permissionModeExplicit,
                 model,
                 fallbackModel,
                 appendSystemPrompt: systemPrompt,

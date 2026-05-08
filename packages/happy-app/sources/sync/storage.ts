@@ -24,6 +24,7 @@ import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadSessionEffortLevels, saveSessionEffortLevels } from "./persistence";
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
+import { resolveSessionPermissionMode } from "./permissionModeDefaults";
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -52,11 +53,6 @@ function resolveSessionOnlineState(session: { active: boolean; activeAt: number 
 function isSessionActive(session: { active: boolean; activeAt: number }): boolean {
     // Use the active flag directly, no timeout checks
     return session.active;
-}
-
-function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boolean {
-    const sandbox = metadata?.sandbox;
-    return !!sandbox && typeof sandbox === 'object' && (sandbox as { enabled?: unknown }).enabled === true;
 }
 
 // Known entitlement IDs
@@ -410,12 +406,12 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
-                const defaultPermissionMode: PermissionModeKey = isSandboxEnabled(session.metadata) ? 'bypassPermissions' : 'default';
-                const resolvedPermissionMode: PermissionModeKey =
-                    (existingPermissionMode && existingPermissionMode !== 'default' ? existingPermissionMode : undefined) ||
-                    (savedPermissionMode && savedPermissionMode !== 'default' ? savedPermissionMode : undefined) ||
-                    (session.permissionMode && session.permissionMode !== 'default' ? session.permissionMode : undefined) ||
-                    defaultPermissionMode;
+                const resolvedPermissionMode: PermissionModeKey = resolveSessionPermissionMode({
+                    existingPermissionMode,
+                    savedPermissionMode,
+                    incomingPermissionMode: session.permissionMode,
+                    metadata: session.metadata,
+                });
 
                 // Restore model mode / effort level from MMKV on first load — server
                 // does not sync these, and they used to reset on every app restart (#1028).
@@ -970,15 +966,18 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
 
-            // Collect all permission modes for persistence
+            // Collect all permission modes for persistence. 'default' is included so that an
+            // explicit user downgrade (e.g., from bypassPermissions to default) survives server
+            // sync cycles — resolveSessionPermissionMode treats a saved 'default' as a deliberate
+            // choice and does not override it with initialPermissionMode.
             const allModes: Record<string, string> = {};
             Object.entries(updatedSessions).forEach(([id, sess]) => {
-                if (sess.permissionMode && sess.permissionMode !== 'default') {
+                if (sess.permissionMode) {
                     allModes[id] = sess.permissionMode;
                 }
             });
 
-            // Persist permission modes (only non-default values to save space)
+            // Persist permission modes (includes explicit 'default' to preserve intentional downgrades)
             saveSessionPermissionModes(allModes);
 
             // No need to rebuild sessionListViewData since permission mode doesn't affect the list display
