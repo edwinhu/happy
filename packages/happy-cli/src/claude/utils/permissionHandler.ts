@@ -37,6 +37,8 @@ export class PermissionHandler {
     private allowedBashLiterals = new Set<string>();
     private allowedBashPrefixes = new Set<string>();
     private permissionMode: PermissionMode = 'default';
+    /** The permission mode supplied at CLI launch time; reset() restores to this instead of 'default' */
+    private initialPermissionMode: PermissionMode = 'default';
     private onPermissionRequestCallback?: (toolCallId: string) => void;
     /** Callback to change permission mode on the active query (set by claudeRemote) */
     private setPermissionModeCallback?: (mode: PermissionMode) => Promise<void>;
@@ -54,6 +56,16 @@ export class PermissionHandler {
     }
 
     handleModeChange(mode: PermissionMode) {
+        this.permissionMode = mode;
+    }
+
+    /**
+     * Seed the initial permission mode from CLI args.
+     * This mode is preserved across reset() calls so that --permission-mode bypassPermissions
+     * is not lost when a new session starts or a turn ends.
+     */
+    seedInitialMode(mode: PermissionMode) {
+        this.initialPermissionMode = mode;
         this.permissionMode = mode;
     }
 
@@ -300,14 +312,16 @@ export class PermissionHandler {
     }
 
     /**
-     * Resets all state for new sessions
+     * Resets all state for new sessions.
+     * Restores permissionMode to the initial CLI-supplied mode (not 'default'),
+     * so that --permission-mode bypassPermissions survives across session restarts.
      */
     reset(): void {
         this.responses.clear();
         this.allowedTools.clear();
         this.allowedBashLiterals.clear();
         this.allowedBashPrefixes.clear();
-        this.permissionMode = 'default';
+        this.permissionMode = this.initialPermissionMode;
 
         // Cancel all pending requests
         for (const [, pending] of this.pendingRequests.entries()) {

@@ -328,10 +328,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const permissionMode = React.useMemo<PermissionMode | null>(() => (
         resolveCurrentOption(availableModes, [
             session.permissionMode,
-            session.metadata?.currentOperatingModeCode,
             getDefaultPermissionModeKey(flavor),
         ])
-    ), [availableModes, session.permissionMode, session.metadata?.currentOperatingModeCode, flavor]);
+    ), [availableModes, session.permissionMode, flavor]);
 
     const modelMode = React.useMemo<ModelMode | null>(() => (
         resolveCurrentOption(availableModels, [

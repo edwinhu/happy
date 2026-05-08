@@ -64,6 +64,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
         messageQueue: opts.messageQueue,
         allowedTools: opts.allowedTools,
         sandboxConfig: opts.sandboxConfig,
+        initialPermissionMode: opts.permissionMode,
         onModeChange: opts.onModeChange,
         hookSettingsPath: opts.hookSettingsPath,
         jsRuntime: opts.jsRuntime

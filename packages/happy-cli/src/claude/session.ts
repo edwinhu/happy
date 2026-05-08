@@ -1,6 +1,6 @@
 import { ApiClient, ApiSessionClient } from "@/lib";
 import { MessageQueue2 } from "@/utils/MessageQueue2";
-import { EnhancedMode } from "./loop";
+import { EnhancedMode, PermissionMode } from "./loop";
 import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import type { SandboxConfig } from "@/persistence";
@@ -17,6 +17,8 @@ export class Session {
     readonly allowedTools?: string[];
     readonly sandboxConfig?: SandboxConfig;
     readonly _onModeChange: (mode: 'local' | 'remote') => void;
+    /** Initial permission mode from CLI args (e.g. --permission-mode bypassPermissions) */
+    readonly initialPermissionMode?: PermissionMode;
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     readonly hookSettingsPath: string;
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -45,6 +47,8 @@ export class Session {
         onModeChange: (mode: 'local' | 'remote') => void,
         allowedTools?: string[],
         sandboxConfig?: SandboxConfig,
+        /** Initial permission mode from CLI args */
+        initialPermissionMode?: PermissionMode,
         /** Path to temporary settings file with SessionStart hook (required for session tracking) */
         hookSettingsPath: string,
         /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -61,6 +65,7 @@ export class Session {
         this.mcpServers = opts.mcpServers;
         this.allowedTools = opts.allowedTools;
         this.sandboxConfig = opts.sandboxConfig;
+        this.initialPermissionMode = opts.initialPermissionMode;
         this._onModeChange = opts.onModeChange;
         this.hookSettingsPath = opts.hookSettingsPath;
         this.jsRuntime = opts.jsRuntime ?? 'node';

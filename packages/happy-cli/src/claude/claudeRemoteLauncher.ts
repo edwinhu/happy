@@ -98,8 +98,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When switch clicked
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
-    // Create permission handler
+    // Create permission handler and seed with initial CLI permission mode.
+    // seedInitialMode() stores the mode so that reset() restores it instead of
+    // falling back to 'default' on each new session or turn end.
     const permissionHandler = new PermissionHandler(session);
+    if (session.initialPermissionMode) {
+        permissionHandler.seedInitialMode(session.initialPermissionMode);
+    }
 
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(
