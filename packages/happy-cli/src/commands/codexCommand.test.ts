@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   mockExtractCodexResumeFlag: vi.fn(),
   mockExtractNoSandboxFlag: vi.fn(),
   mockEnsureDaemonRunning: vi.fn(),
+  mockGetDefaultPermissionMode: vi.fn(),
 }))
 
 vi.mock('@/ui/auth', () => ({
@@ -28,7 +29,18 @@ vi.mock('@/daemon/ensureDaemonRunning', () => ({
   ensureDaemonRunning: mocks.mockEnsureDaemonRunning,
 }))
 
+vi.mock('@/claude/utils/claudeSettings', () => ({
+  getDefaultPermissionMode: mocks.mockGetDefaultPermissionMode,
+}))
+
+vi.mock('@/codex/codexSettings', () => ({
+  getCodexDefaultPermissionMode: vi.fn(),
+}))
+
 import { handleCodexCommand } from './codexCommand'
+import { getCodexDefaultPermissionMode } from '@/codex/codexSettings'
+
+const mockGetCodexDefaultPermissionMode = vi.mocked(getCodexDefaultPermissionMode)
 
 describe('handleCodexCommand', () => {
   beforeEach(() => {
@@ -46,6 +58,8 @@ describe('handleCodexCommand', () => {
     }))
     mocks.mockEnsureDaemonRunning.mockResolvedValue(undefined)
     mocks.mockRunCodex.mockResolvedValue(undefined)
+    mocks.mockGetDefaultPermissionMode.mockReturnValue(null)
+    mockGetCodexDefaultPermissionMode.mockReturnValue(null)
   })
 
   it('ensures the daemon is running before starting a codex session', async () => {
@@ -57,6 +71,7 @@ describe('handleCodexCommand', () => {
       startedBy: 'terminal',
       noSandbox: false,
       resumeThreadId: undefined,
+      permissionMode: undefined,
     })
     expect(
       mocks.mockEnsureDaemonRunning.mock.invocationCallOrder[0],
@@ -80,6 +95,22 @@ describe('handleCodexCommand', () => {
       startedBy: 'daemon',
       noSandbox: true,
       resumeThreadId: 'thread-123',
+      permissionMode: undefined,
+    })
+  })
+
+  it('uses Codex config permission default before shared Claude default', async () => {
+    mockGetCodexDefaultPermissionMode.mockReturnValue('yolo')
+    mocks.mockGetDefaultPermissionMode.mockReturnValue('bypassPermissions')
+
+    await handleCodexCommand(['--started-by', 'terminal'])
+
+    expect(mocks.mockRunCodex).toHaveBeenCalledWith({
+      credentials: { token: 'token' },
+      startedBy: 'terminal',
+      noSandbox: false,
+      resumeThreadId: undefined,
+      permissionMode: 'yolo',
     })
   })
 })

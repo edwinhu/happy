@@ -125,6 +125,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
+        initialPermissionMode: initialPermissionMode ?? null,
     };
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
@@ -451,9 +452,20 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
         let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            messagePermissionMode = applySandboxPermissionPolicy(message.meta.permissionMode, sandboxEnabled);
-            currentPermissionMode = messagePermissionMode;
-            logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
+            const incomingMode = applySandboxPermissionPolicy(message.meta.permissionMode, sandboxEnabled);
+            // Don't let 'default' from old mobile builds clobber a configured initial permission
+            // mode. Legacy builds (without permissionModeExplicit) always sent 'default' as a
+            // fallback — that shouldn't override the CLI's --permission-mode or config-based
+            // initial mode. New builds set permissionModeExplicit: true to signal a deliberate
+            // user choice, in which case we must honor even a downgrade to 'default'.
+            if (incomingMode === 'default' && !message.meta.permissionModeExplicit && initialPermissionMode && initialPermissionMode !== 'default') {
+                messagePermissionMode = currentPermissionMode;
+                logger.debug(`[loop] Ignoring implicit 'default' permission mode from legacy client — preserving current: ${currentPermissionMode}`);
+            } else {
+                messagePermissionMode = incomingMode;
+                currentPermissionMode = messagePermissionMode;
+                logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
+            }
         } else {
             logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
         }

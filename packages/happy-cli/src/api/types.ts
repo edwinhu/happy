@@ -189,6 +189,7 @@ export type Machine = {
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
+  permissionModeExplicit: z.boolean().optional(), // true when the user deliberately chose permissionMode in the UI (distinguishes from legacy builds that always send 'default')
   model: z.string().nullable().optional(), // Model name for this message (null = reset)
   fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)
   customSystemPrompt: z.string().nullable().optional(), // Custom system prompt for this message (null = reset)
@@ -324,6 +325,7 @@ export type Metadata = {
   /** Lineage for sessions created via the fork / duplicate flow. */
   parentSessionId?: string
   forkedFromMessageId?: string
+  initialPermissionMode?: PermissionMode | null
 };
 
 export type AgentState = {
