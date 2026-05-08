@@ -28,6 +28,8 @@ import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
+import { getDefaultPermissionMode } from '@/claude/utils/claudeSettings';
+import { getCodexDefaultPermissionMode } from '@/codex/codexSettings';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -153,6 +155,16 @@ export async function startDaemon(): Promise<void> {
     // Ensure auth and machine registration BEFORE anything else
     const { credentials, machineId } = await authAndSetupMachineIfNeeded();
     logger.debug('[DAEMON RUN] Auth and machine setup complete');
+
+    // Read default permission modes from local agent configs (cached for daemon lifetime)
+    const defaultPermissionMode = getDefaultPermissionMode();
+    if (defaultPermissionMode) {
+      logger.debug(`[DAEMON RUN] Default permission mode from Claude settings: ${defaultPermissionMode}`);
+    }
+    const codexDefaultPermissionMode = getCodexDefaultPermissionMode() ?? defaultPermissionMode;
+    if (codexDefaultPermissionMode) {
+      logger.debug(`[DAEMON RUN] Default permission mode for Codex: ${codexDefaultPermissionMode}`);
+    }
 
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
@@ -405,7 +417,12 @@ export async function startDaemon(): Promise<void> {
           const resumeFragment = options.resumeClaudeSessionId && agent === 'claude'
             ? ` --resume ${shellescape(options.resumeClaudeSessionId)}`
             : '';
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
+          let fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
+          const agentDefaultPermissionMode = agent === 'codex' ? codexDefaultPermissionMode : defaultPermissionMode;
+          // Inject default permission mode from the agent's local config
+          if (agentDefaultPermissionMode) {
+            fullCommand += ` --permission-mode ${agentDefaultPermissionMode}`;
+          }
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -460,7 +477,13 @@ export async function startDaemon(): Promise<void> {
               // Set timeout for webhook (same as regular flow)
               const timeout = setTimeout(() => {
                 pidToAwaiter.delete(tmuxResult.pid!);
-                logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${tmuxResult.pid} (tmux)`);
+                logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${tmuxResult.pid} (tmux), killing child`);
+                // Kill the child process to prevent zombie sessions that register after timeout
+                try {
+                  process.kill(tmuxResult.pid!, 'SIGTERM');
+                } catch (e) {
+                  logger.debug(`[DAEMON RUN] Failed to kill timed-out tmux child PID ${tmuxResult.pid}:`, e);
+                }
                 resolve({
                   type: 'error',
                   errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`
@@ -520,6 +543,11 @@ export async function startDaemon(): Promise<void> {
           // it through `--resume <id>` as Happy's existing pass-through to claude.
           if (options.resumeClaudeSessionId && agentCommand === 'claude') {
             args.push('--resume', options.resumeClaudeSessionId);
+          }
+          const agentDefaultPermissionMode = agentCommand === 'codex' ? codexDefaultPermissionMode : defaultPermissionMode;
+          // Inject default permission mode from the agent's local config
+          if (agentDefaultPermissionMode) {
+            args.push('--permission-mode', agentDefaultPermissionMode);
           }
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions
@@ -610,7 +638,13 @@ export async function startDaemon(): Promise<void> {
       return new Promise((resolve) => {
         const timeout = setTimeout(() => {
           pidToAwaiter.delete(happyProcess.pid!);
-          logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
+          logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}, killing child`);
+          // Kill the child process to prevent zombie sessions that register after timeout
+          try {
+            happyProcess.kill('SIGTERM');
+          } catch (e) {
+            logger.debug(`[DAEMON RUN] Failed to kill timed-out child PID ${happyProcess.pid}:`, e);
+          }
           resolve({
             type: 'error',
             errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
